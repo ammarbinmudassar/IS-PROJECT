@@ -1,0 +1,24 @@
+{
+  "name": "repudiation-resolver",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "init": "node src/init.js",
+    "test": "node --test",
+    "verify": "node src/verify.js",
+    "benchmark": "node scripts/benchmark.js",
+    "test:browser": "node scripts/browser-check.mjs"
+  },
+  "dependencies": {
+    "express": "5.1.0",
+    "swagger-ui-dist": "5.34.1"
+  },
+  "devDependencies": {
+    "playwright-core": "1.65.0"
+  }
+}
