@@ -1,0 +1,83 @@
+CURRENT AUTOMATED EVALUATION
+Verified 2026-11-07: npm test (Node v26.11.1). Fourteen tests passed; zero failed/skipped.
+The project workflow group contains multiple authenticated HTTP assertions, not a single security case.
+
+T1 denied transaction: amount 100001 against 100000 -> DENIED, AMOUNT_LIMIT_EXCEEDED: PASS.
+T2 changed amount: edit signed transaction in copied export -> CONTENT_ALTERED: PASS.
+T3 missing/reordered events and tail truncated against retained checkpoint -> verification fails: PASS.
+T4 revoked signer: revocation appears as SIGNER_REVOKED; new transaction HTTP 503: PASS.
+T5 signed future timestamp: clock one hour ahead -> CLOCK_ANOMALY: PASS.
+T6 independent verifier: valid signed export with separate trust bundle -> valid: PASS.
+Final cases: invalid negative amount 400; >16 KiB input 413; malformed JSON 400;
+unauthenticated 401; restricted viewer 403; operator config write 403; bad CSRF 403;
+duplicate request 409; opening persisted store retains count and valid chain: PASS.
+SQLite event DELETE rejected: PASS. Changed rule recorded with version 2: PASS.
+
+Repeatable benchmark: npm run benchmark; raw results in docs/benchmark-results.json.
+120 synthetic cases: 80 allowed (including exact boundary), 40 denied. False positives 0/80;
+false negatives 0/40. Median validation/policy/signing/SQLite-commit latency 0.524 ms;
+p95 0.977 ms. Verification of the 120-event export: 65.032 ms. Node v26.11.1 on an
+Intel Core i5-13420H. This excludes HTTP/authentication and is not a production benchmark.
+The independently executable benchmark uses a temporary store and includes all raw timings.
+CLI regression invokes src/verify.js as a separate process with separately supplied trust and
+retained checkpoint: valid prefix growth exits 0; malformed evidence exits 1 with structured issues.
+
+Review regression cases (test/regressions.test.js):
+- Array/number/null/object currency and requestId -> INVALID_TRANSACTION: PASS.
+- Valid newer journal + older retained checkpoint -> valid; rollback/fork/bad signatures -> invalid: PASS.
+- Null/malformed evidence, events, checkpoints and trust -> structured invalid result without throw: PASS.
+- HTTP malformed transaction types -> 400; no signed TRANSACTION created: PASS.
+- Revocation -> main journal frozen; login/access/export/failure audited under separate key: PASS.
+- Exported operational evidence verified; altered/removed audit evidence rejected: PASS.
+- Operational checkpoint permits growth and detects rollback: PASS.
+- API flood -> 429 and Retry-After; one notice/window, no further audit writes: PASS.
+- Login flood -> ten failed-login records + one notice, no duplicate failure records: PASS.
+- Non-API malformed body cannot bypass the API throttle via parser-error logging: PASS.
+- Operational audit persists on reopen; DELETE blocked; missing audit key fails closed: PASS.
+
+Coverage here means the named assignment cases exercised, not source-line coverage.
+Clean export accepted and seeded adverse variants detected. No population-level false-positive
+or false-negative rate is claimed from this small fixture set. No independent penetration test,
+formal cryptographic review, real trusted timestamp service or production benchmark performed.
+The evidence-upload workflow has been exercised in a real headless Brave browser at 1280px
+desktop and 390px mobile widths. Other workflow checks remain covered by API tests. Repeat tests on the demonstration laptop before final submission.
+
+Swagger addition: OpenAPI 3.0.3 specification validated successfully. Documentation assets
+serve locally, Swagger interceptor supplies session CSRF for a real transaction request,
+operator administration remains denied, and main-interface CSP remains restrictive: PASS.
+The Swagger test evaluates its initializer and HTTP flow; no browser rendering test is claimed.
+
+Dashboard recommendation logic was exercised in a DOM simulation for ALLOWED, DENIED,
+valid verification, tamper failure and revoked signer (5/5 states passed). This is a manual
+script check, not a browser layout/accessibility test and not counted among npm test results.
+
+Evidence upload tests (test/evidence-upload.test.js): original export larger than 16 KiB
+accepted; edited amount reports its sequence; uploaded trust ignored; original stored amount
+unchanged; private uploaded reference absent from audit; current revocation applied to old
+exports; post-revocation verification separately audited; anonymous/viewer/bad-CSRF denied
+before the larger parser; wrong media 415; >2 MiB 413; malformed syntax 400; unsupported/null/
+array/deep/too-many-event evidence returns INVALID_EVIDENCE; ten calls then bounded 429: PASS.
+Headless Brave integration (temporary isolated account/store): login -> submit 12500 -> export
+through browser download -> choose original file -> verified -> choose amount-edited copy ->
+CONTENT_ALTERED with transaction sequence. Stored amount remained 12500. Malformed JSON
+shows an error and restores enabled controls. Mobile page has no horizontal overflow (history
+table scrolls within its container). No page errors. Desktop/mobile screenshots visually checked.
+Browser checks were run separately and are not included in the fourteen npm test cases.
+
+History/popup validation (2026-11-07)
+The running port-3000 OpenAPI document lacked /api/verify-evidence: an old Node process
+was serving updated static files with old backend routes. The frontend now detects this
+capability mismatch and blocks uploads with explicit restart guidance.
+API history regression: default bounded pages, no duplicated entries between static pages,
+combined filters, both journals, recorded activity, error-code search, inclusive UTC dates,
+empty results, last-page clamping, SQL-like literal search and invalid/repeated/unknown
+query fields: PASS. Status advertises both frontend capabilities.
+Committed npm run test:browser workflow checks pagination Next/Previous, page-size resets,
+combined filters, error search, popup summary/proof, Close/Escape/focus behavior, empty
+states, invalid dates, journal filter and clearing filters. A 38,079-byte original export
+passed upload verification (HTTP 200); an amount-edited copy flagged event 37 with
+CONTENT_ALTERED (HTTP 200). Stored amount stayed 12500. Malformed and oversized file
+controls recovered. A simulated old backend produced restart guidance without an upload.
+Desktop/mobile screenshots were inspected; no page overflow or JavaScript page errors.
+The browser checks use a disposable data directory and are separate from the 14 API/unit
+tests. Repeat via npm run test:browser; latest evidence is in test-results/browser/report.json.

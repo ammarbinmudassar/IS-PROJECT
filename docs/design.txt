@@ -1,0 +1,98 @@
+ARCHITECTURE, DATA FLOW AND THREAT MODEL
+
+[Untrusted browser]
+  | JSON / session cookie + CSRF token
+  | TRUST BOUNDARY: client -> loopback server
+[Express API: schema checks, roles, stable errors]
+  | normalized transaction / actor
+[Security engine: SHA-256, Ed25519, simulated timestamp, policy version]
+  | parameterized operations / signed evidence
+[SQLite repository: users, requests, settings, append-only events and audit_events]
+  | TRUST BOUNDARY: application -> host filesystem / keys
+[Protected data directory + stopped-service backups]
+  | sanitized JSON export (no passwords, sessions or private keys)
+  | TRUST BOUNDARY: mutable host -> independently retained evidence
+[Independent CLI + trusted public-key bundle + retained signed checkpoint]
+
+The repository stores event JSON with sequence, previous digest, UTC time, actor, action,
+data and engine version. Digest, signature and timestamp attestation wrap that body.
+Transactions include server UUID, amount, currency, reference, requestId, rule version,
+configured limit, decision and reason. The security engine has no browser dependency.
+
+Threat -> mitigation -> evidence
+1. Unauthorized protected-record access -> server role checks; generic denial -> API test.
+2. Session forgery / CSRF -> random expiring HttpOnly SameSite cookie, CSRF header -> API test.
+3. Password theft / guessing -> salted scrypt; login throttle; passwords absent from export -> auth code.
+4. SQL injection -> parameterized statements and validated types -> repository/API tests.
+5. Amount modification -> canonical digest + Ed25519 signature -> T2.
+6. Journal deletion / reordering -> sequence, previous digest, signed checkpoint -> T3.
+7. Truncation / rollback -> independently retained checkpoint -> T3; no freshness without anchor.
+8. Revoked signing key -> audited revocation, blocked transactions, separate operational audit signer -> T4 and regression tests.
+9. Clock manipulation -> monotonic journal times and verifier future-time check -> T5;
+   local timestamp authority still cannot establish independently trusted real time.
+10. Oversized / malformed input -> 16 KiB JSON cap (2 MiB for authenticated evidence verification), strict fields, integer bounds -> final cases.
+11. Repeated submission -> unique requestId and atomic transaction -> duplicate test.
+12. Script injection -> DOM textContent, no HTML rendering of evidence, restrictive CSP -> UI code.
+13. Private-key exposure -> local restricted data directory; no private keys in exports -> storage design.
+14. Unauthenticated audit flooding -> pre-parser API throttle; one summary/window; no duplicate denial/failure writes -> regression tests.
+
+API
+POST /api/login, /api/logout
+GET /api/me, /api/status
+POST /api/transactions
+GET /api/events?page=1&pageSize=10&decision=ALLOWED|DENIED|RECORDED&action=TRANSACTION
+GET /api/events/:sequence
+POST /api/verify (checks stored journal)
+POST /api/verify-evidence (checks an exported JSON body against server-held trust)
+GET /api/export (JSON evidence and signed checkpoint)
+GET/POST /api/settings (admin writes)
+POST /api/revoke (admin, confirmation required)
+All mutations after login require X-CSRF-Token. Errors expose stable codes, no stack traces.
+
+Rule/decision semantics
+MAX_AMOUNT version is recorded per transaction. Above limit means DENIED; at or below means
+ALLOWED. Both outcomes receive evidence. No fraud score or confidence is invented.
+Verifier findings: CONTENT_ALTERED, BAD_SIGNATURE, BAD_TIMESTAMP, CHAIN_BROKEN,
+CLOCK_ANOMALY, BAD_CHECKPOINT, CHECKPOINT_MISMATCH, SIGNER_REVOKED, MALFORMED_EVENT.
+A cryptographic failure recommends preserving evidence and investigating; a denied transaction
+recommends reviewing the configured limit and input. Revocation requires a fresh journal/key trust.
+
+Operational audit extension
+After transaction-signer revocation, security events enter audit_events using a distinct
+Ed25519 audit key in audit-keys.json. Entries use the same canonical event and local timestamp
+format with their own sequence and hash chain. Export auditTrail carries its signed checkpoint;
+public-keys.json exposes auditSigner for independent trust. The parent signed checkpoint binds
+auditCount/auditHead. Missing or altered audit evidence is rejected. Retained checkpoints anchor
+both prefixes, accepting valid growth while rejecting rollback. Ordinary legacy exports remain
+verifiable with their original trusted keys. All private keys remain within the host boundary.
+GET /api/events returns newest-first pages across both journals, with journal=transaction
+or journal=operational; /api/events/:sequence continues to address the transaction journal only.
+The verifier emits AUDIT_-prefixed findings for the operational journal. A revoked transaction
+signer remains an explicit invalid-policy finding even when all mathematical signatures pass.
+
+Evidence-file verification
+The protected browser file picker sends the selected JSON to POST /api/verify-evidence.
+Authentication, CSRF and operator/admin authorization precede body parsing. The endpoint
+accepts application/json with a 2 MiB decoded cap, limits verification to ten calls/IP/minute,
+and bounds event counts, nesting depth and node count before canonicalization. All other
+API bodies retain the original 16 KiB limit. A valid JSON primitive or malformed export
+returns valid=false/INVALID_EVIDENCE; syntax, size and media-type failures have stable errors.
+Only stored public keys are trusted. Current local signer revocation also applies to uploads.
+Uploaded transaction records, filenames and keys are not persisted. The sanitized
+EVIDENCE_VERIFICATION event contains validity, checked count, issue count and at most twenty
+issue code/sequence pairs. No records are imported. The UI shows plain-language findings
+and retains detailed codes in an expandable result. This endpoint does not establish freshness;
+independent verification with retained checkpoints remains the rollback evidence path.
+
+History and UI refinement
+The repository queries a fixed UNION ALL of both append-only tables. Validated filter
+values are bound parameters; count, bounded LIMIT/OFFSET and JSON field extraction run
+in SQLite before event JSON is decoded. Stable ordering is UTC time DESC, sequence DESC,
+journal ASC. The API now returns an EventPage object, replacing the old unbounded array.
+Unknown/repeated fields, invalid dates and invalid bounds fail with INVALID_FILTER.
+The UI applies filters together, resets pagination when filters/page size change, protects
+against stale overlapping responses, and clamps pages when results shrink. Inspect uses
+a native modal dialog with a summary, expandable proof, keyboard dismissal and focus return.
+GET /api/status advertises evidenceUpload/eventPagination capabilities. The new frontend
+blocks incompatible old backend behavior with explicit restart instructions. Error audit
+summaries include route/method without retaining request bodies or query-string contents.
