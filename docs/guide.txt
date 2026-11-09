@@ -1,0 +1,144 @@
+REPUDIATION RESOLVER — SETUP, USERS AND DEMONSTRATION
+
+Requires Node.js 24 or newer. From the project directory:
+  npm ci --ignore-scripts
+  npm test
+  INIT_PASSWORD='<choose a unique password of at least 12 characters>' npm run init -- administrator admin
+  INIT_PASSWORD='<another unique password>' npm run init -- analyst operator
+  INIT_PASSWORD='<another unique password>' npm run init -- observer viewer
+  npm start
+Open the local application on port 3000. Password examples above are placeholders.
+PowerShell: set $env:INIT_PASSWORD before npm run init, then remove it afterward.
+The local initialization command is an administrative operation requiring filesystem access.
+Never commit data/, dependencies or password files. SQLite and Ed25519 keys are generated
+on first initialization. DatabaseSync is supplied by Node; no separate database service needed.
+
+Roles
+Administrator: transactions, journal, export, verification, amount limit and signer revocation.
+Operator: transactions, journal, export and verification.
+Viewer: aggregate event count and signer status only. Protected record requests are denied.
+Login has ten attempts per client IP per minute. All API requests share a separate
+120-request/IP/minute budget, applied before JSON parsing and authentication. A blocked
+window records one rate-limit notice; further requests return 429 with Retry-After without writes. Sessions expire after 30 minutes and restart.
+All transaction amounts are integer minor units. Currency is an uppercase three-letter code;
+the prototype does not validate against a complete ISO currency registry. Default limit: 100000.
+Use a unique requestId for each submission; retries with the same identifier are rejected.
+
+Evidence and independent verification
+Export evidence from the dashboard. Copy data/public-keys.json through a trusted channel to
+the verifier BEFORE investigating a dispute. Keep exported evidence/checkpoints on a separate,
+trusted device. Public keys contain no private signing material. The export contains the full
+sanitized transaction journal, transaction receipts, a signed checkpoint and auditTrail,
+excluding passwords/sessions. auditTrail has its own signatures and checkpoint; auditSigner
+in the trusted public-key bundle identifies its separate operational signing key.
+Transaction references are exported: enter only synthetic, nonsensitive references.
+  npm run verify -- /path/evidence.json /path/trusted-public-keys.json
+Optional third argument: a previously retained checkpoint JSON (the checkpoint property alone).
+A retained checkpoint anchors a prefix: later valid journal growth is accepted, while a
+missing tail, changed prefix or invalid checkpoint signature is rejected. The export
+checkpoint is always checked independently. Retained operational-audit heads are also checked. A previously valid shorter export remains
+valid against its own checkpoint; freshness requires a retained independent checkpoint.
+Verification returns issue codes and sequence numbers; exit status 0 means all checks passed.
+Any tamper failure requires investigation, preservation of originals and recovery, not deletion.
+
+Administration and recovery
+Change the amount limit with confirmation. The old/new limit and version enter the journal.
+Revocation requires typing REVOKE, permanently stops transaction-journal writes, and marks verification
+SIGNER_REVOKED. Historical signatures can still be mathematically valid. Revocation is a local
+policy finding, not an external revocation authority; offline verifiers must obtain latest evidence.
+Exports remain available after revocation. Login, denied access, failure, verification and
+export activity continue in a separate append-only operational audit trail signed by the
+audit key. History labels these sequences "Audit". No signing-key rotation UI is included.
+After revocation, preserve the old directory and trusted exports, then initialize a new DATA_DIR
+and new users to start a fresh journal with a separately trusted public-key bundle. Never erase
+revocation records or silently replace keys within an existing journal.
+Stop the server before copying the entire data directory to protected backup storage, including
+keys.json, audit-keys.json and SQLite files. Restore the complete matching directory, verify against retained public
+keys/checkpoint, then restart. Missing keys fail closed. Corrupt journal startup fails closed.
+Keep backup keys confidential and retain independent evidence of the latest checkpoint.
+
+10–15 minute demonstration
+0–2: explain roles, data flow and trust boundaries. Sign in as operator.
+2–4: submit the safe fixture and excessive-amount fixture; inspect signed decisions and reasons.
+4–6: export evidence; verify with the CLI and separately retained public keys. Change an exported
+amount in a COPY; verify again and show CONTENT_ALTERED. Remove/reorder entries in copies.
+6–8: sign in as administrator, change limit, resubmit with new requestId; show rule-version history.
+8–10: use viewer credentials and demonstrate protected API denial. Run npm test for malformed,
+oversized, duplicate, CSRF and persistence cases, plus synthetic signed clock anomalies.
+10–12: revoke signer (use a disposable DATA_DIR for this demo); show blocked transactions and
+SIGNER_REVOKED. Explain recovery into a new journal and limits of timestamp simulation.
+12–15: show automated results, latency evidence, threat model and limitations.
+
+Scope and ethics
+Local classroom simulation using synthetic transactions only; no real financial processing,
+external attacks, legal nonrepudiation claim or production hosting. The app binds to loopback.
+Remote use needs HTTPS, secure cookies (SECURE_COOKIE=1), host controls and an access review.
+An administrator controlling the host and private keys can forge history. Hash chaining does
+not prevent host compromise or prove freshness without separately retained evidence.
+Timestamp assertions use a distinct local key but the same machine clock; they simulate an
+authority and cannot prove real time. Evidence imports accept JSON only, up to 2 MiB;
+other JSON request bodies remain limited to 16 KiB. All are validated on the server. Sessions intentionally do not survive restart.
+The operational audit key cannot authorize new transactions. Both keys are held on the same
+host, so host compromise remains outside the cryptographic trust guarantee. If clock or disk
+failures prevent logging, safe failures may have no durable audit record.
+
+Upgrading an existing data directory
+Back up the stopped service first. Startup adds audit_events and creates audit-keys.json for
+the new operational trail without changing existing transaction evidence. Re-copy the updated
+public-keys.json through a trusted channel; new exports require its auditSigner field. Preserve
+older trusted key bundles for old exports. Missing audit keys with existing audit records fail
+closed; restore matching backups. No new user accounts or transaction-key replacement needed.
+
+Repeatable evaluation
+Run npm test for the workflow and regression suite. Run npm run benchmark for 120 synthetic
+within-limit, exact-boundary and above-limit samples, raw timings and fixture FP/FN counts.
+The benchmark uses an isolated temporary store and deletes it afterward; it excludes HTTP
+and authentication. docs/benchmark-results.json contains one measured run, not a performance
+guarantee. Inspect a transaction or verify the journal to see the recommended action in the UI.
+
+Interactive API documentation
+With the application running, open /docs/ on the same local server. The OpenAPI 3.0
+specification is available at /openapi.json. All Swagger assets are served locally.
+Expand POST /api/login, select Try it out, enter an existing local account and Execute.
+The browser retains the session cookie. For subsequent authenticated POST calls, Swagger
+fetches the CSRF token automatically from /api/me. The same role restrictions apply.
+Use unique requestId values when trying transactions. Revocation changes real local state;
+use a disposable DATA_DIR for that demonstration. Logout through POST /api/logout.
+
+Verify an exported file in the dashboard
+Sign in as analyst/operator or administrator. Under Journal and disputes, use the
+"Verify an evidence file" form: choose evidence.json and click "Verify evidence file".
+An original export should show "Evidence verified". In a COPY, change a TRANSACTION
+body.data.amount, save as evidence-tampered.json, choose that copy and verify again.
+The result identifies CONTENT_ALTERED and the affected event sequence in plain language.
+Verification does not import or change transaction records. Only a sanitized verification
+summary enters the audit journal; uploaded records and filenames are not retained.
+The current server's public keys are always used; keys inside an upload are never trusted.
+Exports from another journal need that journal's separately trusted keys and the CLI.
+The current local revocation state is enforced even when an old export predates revocation.
+Limits: .json file, 2 MiB, 2,000 events per journal, ten verification requests/IP/minute.
+Malformed JSON and oversized files show actionable errors. Viewer accounts cannot verify files.
+This checks integrity, not freshness: use the CLI and a retained checkpoint for rollback checks.
+
+Event history and popup inspection
+History defaults to the ten newest matching events. Previous/Next and Events per page
+(10/25/50) change the visible page; the count shows the matching total. Apply filters for
+search text, action, result, actor, journal and inclusive UTC dates. Filters combine; Clear
+filters resets them. Search includes sequence, actor, reference, request ID and error code.
+Changing filters or page size returns to page 1. Empty results include recovery guidance.
+Inspect opens a dialog with a readable summary and recommended action. Expand Signed
+evidence (JSON) for full proof fields. Close, Escape or clicking outside the dialog dismisses
+it and returns focus to the Inspect button. Transaction receipts and journal verification
+also use the dialog. Uploaded-file verification keeps its result beside the file picker.
+
+If updated controls report an older backend, stop the running server with Ctrl+C, run
+npm start again from the project folder, then refresh. Static HTML/JS updates are served
+immediately, but running Node routes and body limits do not reload until restart. The UI
+checks server capabilities before uploading, preventing a new UI from using an old parser.
+
+Repeatable real-browser tests
+npm test runs the API/security/history suite. npm run test:browser runs an isolated
+browser workflow using a temporary database and synthetic users; it never uses data/.
+It needs an installed Chromium-based browser. Set BROWSER_EXECUTABLE to its executable
+if it is not found at /opt/brave-bin/brave, /usr/bin/chromium or /usr/bin/google-chrome.
+Screenshots and report.json are saved in test-results/browser/ (excluded from Git).
