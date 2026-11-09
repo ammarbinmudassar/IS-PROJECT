@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Repudiation Resolver</title><link rel="stylesheet" href="/style.css"><script defer src="/app.js"></script>
+</head>
+<body><main>
+  <header><h1>Repudiation Resolver</h1><p>Transaction journal and dispute evidence</p><a href="/docs/">API documentation</a></header>
+  <p id="message" role="status"></p>
+  <form id="login"><h2>Sign in</h2><label>Username<input name="username" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button>Sign in</button></form>
+  <section id="dashboard" hidden>
+    <p id="identity"></p><button id="logout">Sign out</button><p id="status"></p>
+    <p>Timestamp authority: local simulation. Retain exported evidence and trusted public keys separately.</p>
+    <div id="protected" hidden>
+      <form id="transaction"><h2>Submit transaction</h2><label>Amount in minor units (e.g. 100 = 1.00)<input name="amount" type="number" min="1" step="1" required></label><label>Currency (three uppercase letters)<input name="currency" value="PKR" pattern="[A-Z]{3}" required></label><label>Reference<input name="reference" maxlength="100" required></label><button>Submit</button></form>
+      <section id="admin" hidden><h2>Administration</h2><form id="settings"><label>Maximum amount in minor units<input name="amountLimit" type="number" min="1" required></label><button>Update limit</button></form><button id="revoke">Revoke signer</button></section>
+      <h2>Journal and disputes</h2>
+      <div class="toolbar"><button id="verify">Verify journal</button><button id="export">Export evidence</button><a href="#evidence-upload">Verify an evidence file</a></div>
+      <form id="event-filters" aria-label="Event filters">
+        <div class="filter-grid">
+          <label>Search events<input id="event-search" name="q" type="search" maxlength="120" placeholder="Actor, reference, request ID or error code"></label>
+          <label>Action<select id="event-action" name="action"><option value="">Any action</option></select></label>
+          <label>Result<select id="filter" name="decision"><option value="">Any result</option><option value="ALLOWED">Allowed</option><option value="DENIED">Denied</option><option value="RECORDED">Recorded activity</option></select></label>
+          <label>Actor<select id="event-actor" name="actor"><option value="">Any actor</option></select></label>
+          <label>Journal<select id="event-journal" name="journal"><option value="">Both journals</option><option value="transaction">Transaction journal</option><option value="operational">Operational audit</option></select></label>
+          <label>From date (UTC)<input id="event-from" name="from" type="date"></label>
+          <label>To date (UTC)<input id="event-to" name="to" type="date"></label>
+        </div>
+        <button type="submit">Apply filters</button><button id="clear-filters" type="button" class="secondary">Clear filters</button>
+      </form>
+      <div id="event-list" aria-busy="false">
+        <p id="event-count" role="status"></p>
+        <div class="scroll" tabindex="0" role="region" aria-label="Event history"><table><thead><tr><th scope="col">Sequence</th><th scope="col">Time (UTC)</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Result</th><th scope="col">Evidence</th></tr></thead><tbody id="events"></tbody></table></div>
+        <nav class="pagination" aria-label="Event pages">
+          <label>Events per page<select id="page-size"><option value="10">10</option><option value="25">25</option><option value="50">50</option></select></label>
+          <div><button id="previous-page" type="button" class="secondary" disabled>Previous</button><span id="page-status" role="status">Page 1 of 1</span><button id="next-page" type="button" class="secondary" disabled>Next</button></div>
+        </nav>
+      </div>
+      <form id="evidence-upload" aria-labelledby="upload-heading">
+        <h2 id="upload-heading">Verify an evidence file</h2>
+        <p>Choose an original or edited export. Verification uses this server's trusted keys and does not replace stored transactions.</p>
+        <label for="evidence-file">Evidence JSON file<input id="evidence-file" type="file" accept=".json,application/json" aria-describedby="upload-help" required></label>
+        <p id="upload-help">JSON only, up to 2 MiB and 2,000 events per journal. This checks integrity, not whether the export is the latest version. Use the independent CLI with a retained checkpoint to check for rollback.</p>
+        <button id="verify-file" type="submit">Verify evidence file</button>
+        <div id="file-result" hidden aria-live="polite" aria-atomic="true"><h3 id="file-verdict"></h3><p id="file-summary"></p><ul id="file-issues"></ul><p id="file-next"></p><details><summary>Technical verification result</summary><pre id="file-technical"></pre></details></div>
+      </form>
+    </div>
+  </section>
+</main>
+<dialog id="evidence-dialog" aria-labelledby="dialog-title" aria-describedby="recommendation">
+  <div class="dialog-heading"><h2 id="dialog-title">Evidence details</h2><button id="dialog-close" type="button" autofocus>Close</button></div>
+  <p id="recommendation"></p><dl id="event-summary"></dl>
+  <details><summary>Signed evidence (JSON)</summary><pre id="details"></pre></details>
+</dialog>
+</body></html>
